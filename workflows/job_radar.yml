@@ -1,0 +1,35 @@
+name: Job Radar - Fetch Jobs
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:          # manual trigger button in GitHub UI
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write         # needed to push dashboard.html
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 openpyxl pandas
+
+      - name: Run job fetcher
+        run: python job_radar_5k_cloud.py
+
+      - name: Commit and push dashboard
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html docs/jobs_all.json
+          git diff --staged --quiet || git commit -m "Update job radar $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
