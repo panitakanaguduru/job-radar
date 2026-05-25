@@ -268,114 +268,6 @@ def fetch_smartrecruiters(url, company, sector, cutoff, opt, f500):
     return results
 
 
-def fetch_adzuna(app_id, app_key, cutoff):
-    """
-    Adzuna API — covers Google, Microsoft, Amazon, Goldman Sachs,
-    JPMorgan, Capital One, Nike, Walmart and all major companies.
-    Free tier: unlimited calls.
-    """
-    BASE = "https://api.adzuna.com/v1/api/jobs/us/search"
-    
-    # Search queries covering all 3 role types
-    searches = [
-        "data analyst",
-        "business analyst", 
-        "financial analyst",
-        "risk analyst",
-        "software engineer",
-        "sales engineer",
-        "solutions engineer",
-        "analytics engineer",
-        "data engineer",
-        "machine learning engineer",
-    ]
-    
-    results = []
-    seen_ids = set()
-    
-    for query in searches:
-        for page in [1, 2]:  # 2 pages = 100 results per query
-            try:
-                r = S.get(f"{BASE}/{page}", params={
-                    "app_id":           app_id,
-                    "app_key":          app_key,
-                    "what":             query,
-                    "where":            "united states",
-                    "max_days_old":     1,
-                    "results_per_page": 50,
-                    "content-type":     "application/json",
-                }, timeout=TIMEOUT)
-                
-                if r.status_code != 200:
-                    break
-                    
-                data = r.json()
-                jobs_raw = data.get("results", [])
-                if not jobs_raw:
-                    break
-                    
-                for j in jobs_raw:
-                    job_id = str(j.get("id", ""))
-                    if job_id in seen_ids:
-                        continue
-                    seen_ids.add(job_id)
-                    
-                    title   = j.get("title", "").strip()
-                    company = j.get("company", {}).get("display_name", "")
-                    loc     = j.get("location", {}).get("display_name", "")
-                    url     = j.get("redirect_url", "")
-                    created = j.get("created", "")
-                    
-                    if not kw_match(title): continue
-                    if not is_us(loc): continue
-                    if not is_early_career(title): continue
-                    
-                    # Parse created date
-                    try:
-                        dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                        if dt < cutoff: continue
-                        pa = dt.isoformat()
-                    except:
-                        pa = datetime.now(timezone.utc).isoformat()
-                    
-                    # Detect sector from company name
-                    sector = detect_sector(company)
-                    
-                    # OPT friendly — Adzuna covers known sponsors
-                    opt = "YES"
-                    f500 = "No"
-                    
-                    results.append(make_job(
-                        company, sector, title, loc, url,
-                        "Adzuna", pa, "", opt, f500
-                    ))
-                        
-            except Exception as e:
-                print(f"  Adzuna error ({query} p{page}): {e}", flush=True)
-                break
-    
-    return results
-
-
-def detect_sector(company):
-    """Guess sector from company name."""
-    c = company.lower()
-    if any(x in c for x in ["bank","financial","capital","invest","fund","insurance","fidelity","morgan","goldman","jpmorgan","visa","mastercard","paypal"]):
-        return "FinTech"
-    if any(x in c for x in ["health","medical","pharma","hospital","clinic","care","bio","drug","pfizer","merck","abbvie"]):
-        return "Healthcare"
-    if any(x in c for x in ["google","microsoft","apple","amazon","meta","nvidia","intel","cisco","oracle","adobe","salesforce","ibm"]):
-        return "Technology"
-    if any(x in c for x in ["real estate","realty","property","cbre","jll","cushman","prologis","zillow","redfin"]):
-        return "Real Estate"
-    if any(x in c for x in ["deloitte","kpmg","pwc","ernst","mckinsey","bcg","bain","accenture","consulting"]):
-        return "Consulting"
-    if any(x in c for x in ["walmart","target","nike","costco","home depot","amazon","retail","store"]):
-        return "Retail"
-    if any(x in c for x in ["defense","military","raytheon","lockheed","boeing","northrop"]):
-        return "Defense"
-    return "Technology"
-
 FETCHERS = {
     "Greenhouse":     fetch_greenhouse,
     "Ashby":          fetch_ashby,
@@ -414,28 +306,6 @@ def main():
     existing = [j for j in existing
                 if j.get("fetched_at","") >= keep_cutoff.isoformat()]
     print(f"After 7-day cleanup: {len(existing)} jobs")
-
-    # Adzuna API credentials from environment
-    ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID", "dcdb6022")
-    ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "bde4c79ccfced79f52c0ca30db18422b")
-
-    # Fetch new jobs
-    new_jobs = []
-    existing_ids = {j["id"] for j in existing}
-    stats = {k:0 for k in FETCHERS}
-    stats["Adzuna"] = 0
-
-    # ── Adzuna fetch first (covers big companies) ─────────────────
-    print("Fetching from Adzuna (Google, Microsoft, Amazon, Goldman...):", flush=True)
-    try:
-        adzuna_jobs = fetch_adzuna(ADZUNA_APP_ID, ADZUNA_APP_KEY, cutoff)
-        fresh_adzuna = [j for j in adzuna_jobs if j["id"] not in existing_ids]
-        new_jobs.extend(fresh_adzuna)
-        for j in fresh_adzuna: existing_ids.add(j["id"])
-        stats["Adzuna"] = len(fresh_adzuna)
-        print(f"  Adzuna: {len(fresh_adzuna)} new jobs", flush=True)
-    except Exception as e:
-        print(f"  Adzuna error: {e}", flush=True)
 
     for i, row in df.iterrows():
         company = str(row.get("Company","")).strip()
@@ -569,7 +439,6 @@ select{cursor:pointer}select option{background:var(--s2)}
       <div class="pill"><div class="pill-n" style="color:#43e8a0">NEW_COUNT</div><div class="pill-l">New Today</div></div>
       <div class="pill"><div class="pill-n" style="color:#6c63ff">GH_COUNT</div><div class="pill-l">Greenhouse</div></div>
       <div class="pill"><div class="pill-n" style="color:#a78bfa">ASH_COUNT</div><div class="pill-l">Ashby</div></div>
-      <div class="pill"><div class="pill-n" style="color:#38bdf8">WD_COUNT</div><div class="pill-l">Workday</div></div>
     </div>
     <button class="btn btn-dl" onclick="downloadCSV()">&#11015; CSV</button>
   </div>
@@ -597,7 +466,7 @@ select{cursor:pointer}select option{background:var(--s2)}
     <button class="chip" data-f="sales">Sales Eng</button>
     <button class="chip" data-f="opt">OPT Friendly</button>
     <button class="chip" data-f="f500">Fortune 500</button>
-    <button class="chip" data-f="re">Real Estate</button>
+
   </div>
   <div class="rc"><b id="rcN">0</b> results</div>
 </div>
@@ -615,7 +484,7 @@ var F={
   sales:  function(j){return /sales eng|solutions eng|presales|pre-sales|technical sales|customer eng|field eng/i.test(j.title);},
   opt:    function(j){return j.opt_friendly==='HIGH'||j.opt_friendly==='YES';},
   f500:   function(j){return j.fortune500==='Yes';},
-  re:     function(j){return j.sector==='Real Estate';}
+
 };
 function ago(iso){
   if(!iso)return'';
