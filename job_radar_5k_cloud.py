@@ -302,9 +302,9 @@ def main():
             print(f"Loaded {len(existing)} existing jobs")
         except: pass
 
-    # Remove jobs older than KEEP_DAYS
+    # Remove jobs older than KEEP_DAYS (use posted_at)
     existing = [j for j in existing
-                if j.get("fetched_at","") >= keep_cutoff.isoformat()]
+                if j.get("posted_at","") >= keep_cutoff.isoformat()]
     print(f"After 7-day cleanup: {len(existing)} jobs")
 
     # Fetch new jobs
@@ -337,8 +337,19 @@ def main():
             print(f" -> ERR: {e}")
         time.sleep(DELAY)
 
-    # Merge and sort
+    # Merge, deduplicate, filter to 7 days, sort
     all_jobs = existing + new_jobs
+    # Final strict filter — remove anything older than 7 days
+    all_jobs = [j for j in all_jobs
+                if j.get("posted_at","") >= keep_cutoff.isoformat()]
+    # Deduplicate by id
+    seen = set()
+    deduped = []
+    for j in all_jobs:
+        if j["id"] not in seen:
+            seen.add(j["id"])
+            deduped.append(j)
+    all_jobs = deduped
     all_jobs.sort(key=lambda j: j.get("posted_at",""), reverse=True)
 
     print(f"\nTotal: {len(all_jobs)} jobs ({len(new_jobs)} new this run)")
@@ -441,7 +452,10 @@ select{cursor:pointer}select option{background:var(--s2)}
   <div class="hdr-right">
     <div class="pills">
       <div class="pill"><div class="pill-n">TOTAL_JOBS</div><div class="pill-l">Total</div></div>
-      <div class="pill"><div class="pill-n" style="color:#43e8a0">NEW_COUNT</div><div class="pill-l">New Today</div></div>
+      <button class="pill" onclick="filterNew()" style="cursor:pointer;border-color:#43e8a0" title="Click to filter new jobs today">
+        <div class="pill-n" style="color:#43e8a0">NEW_COUNT</div>
+        <div class="pill-l">New Today</div>
+      </button>
       <div class="pill"><div class="pill-n" style="color:#6c63ff">GH_COUNT</div><div class="pill-l">Greenhouse</div></div>
       <div class="pill"><div class="pill-n" style="color:#a78bfa">ASH_COUNT</div><div class="pill-l">Ashby</div></div>
     </div>
@@ -510,6 +524,12 @@ function card(j){
     +'<div class="meta">'+(j.location?'<span class="m">&#128205;'+esc(j.location)+'</span>':'')
     +(a?'<span class="m">&#128336;'+a+'</span>':'')+newBadge+rem+optB+f5+'</div>'
     +'<a class="apply" href="'+esc(j.url)+'" target="_blank" rel="noopener">Apply &#8599;</a></div>';
+}
+function filterNew(){
+  // Click the "New Today" chip
+  document.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+  var newChip = document.querySelector('[data-f="new"]');
+  if(newChip){ newChip.classList.add('on'); chip='new'; render(); }
 }
 function render(){
   var ff=F[chip]||F.all,s=srch.toLowerCase();
