@@ -307,6 +307,11 @@ def main():
                 if j.get("fetched_at","") >= keep_cutoff.isoformat()]
     print(f"After 7-day cleanup: {len(existing)} jobs")
 
+    # Fetch new jobs
+    new_jobs = []
+    existing_ids = {j["id"] for j in existing}
+    stats = {k:0 for k in FETCHERS}
+
     for i, row in df.iterrows():
         company = str(row.get("Company","")).strip()
         sector  = str(row.get("Sector","")).strip()
